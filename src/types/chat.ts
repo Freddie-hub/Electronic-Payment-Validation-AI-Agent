@@ -63,3 +63,11 @@ export interface ApiResponse {
   reply: string;
   error?: string;
 }
+
+// Chat request interface
+export interface ChatRequest {
+  message: string;
+  epsLogContent?: string;
+  testCaseContent?: string;
+  messages: ChatMessage[]; // Add chat history
+}

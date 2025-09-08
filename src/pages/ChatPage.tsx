@@ -50,11 +50,12 @@ export const ChatPage: React.FC = () => {
   }, []);
 
   // API call to chat backend
-  const callChatAPI = async (message: string, epsLogContent?: string, testCaseContent?: string): Promise<ChatReply> => {
+  const callChatAPI = async (message: string, epsLogContent?: string, testCaseContent?: string, chatHistory: ChatMessage[] = []): Promise<ChatReply> => {
     console.log('ChatPage: Making API call', { 
       message, 
       hasEpsLog: !!epsLogContent, 
       hasTestCase: !!testCaseContent,
+      chatHistoryLength: chatHistory.length,
       epsLogPreview: epsLogContent?.substring(0, 100) + (epsLogContent && epsLogContent.length > 100 ? '...' : ''),
       testCasePreview: testCaseContent?.substring(0, 100) + (testCaseContent && testCaseContent.length > 100 ? '...' : '')
     });
@@ -73,8 +74,14 @@ export const ChatPage: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: "gemma3:1b",
-          messages: [{ role: "user", content: prompt }],
+          model: "phi3:mini", // Updated to match chat.ts
+          messages: [
+            ...chatHistory.map(msg => ({
+              role: msg.role,
+              content: msg.content
+            })),
+            { role: "user", content: prompt }
+          ],
           stream: false,
         }),
       });
@@ -124,7 +131,7 @@ export const ChatPage: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const reply = await callChatAPI(messageContent);
+      const reply = await callChatAPI(messageContent, undefined, undefined, messages);
       addMessage('assistant', reply.chatResponse);
 
       if (reply.stateUpdate && reply.stateUpdate !== appState) {
@@ -149,7 +156,7 @@ export const ChatPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, appState, addMessage, toast]);
+  }, [isLoading, appState, addMessage, toast, messages]);
 
   // Handle file confirmation
   const handleFileConfirmation = useCallback(async (data: EpsConfirmationData) => {
@@ -193,7 +200,7 @@ export const ChatPage: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const reply = await callChatAPI('', task.epsLogContent, task.testCaseContent);
+      const reply = await callChatAPI('', task.epsLogContent, task.testCaseContent, messages);
       setTasks(prevTasks =>
         prevTasks.map(t =>
           t.id === task.id
@@ -240,7 +247,7 @@ export const ChatPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [addMessage, toast]);
+  }, [addMessage, toast, messages]);
 
   // Handle sidebar navigation
   const handleSidebarNavigation = useCallback((action: string) => {

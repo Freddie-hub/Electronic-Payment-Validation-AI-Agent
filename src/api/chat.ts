@@ -1,4 +1,5 @@
 import { buildEpsValidationPrompt, truncateContent } from '@/lib/epsUtils';
+import { ChatMessage } from '@/types/chat'; // Import ChatMessage type
 
 /**
  * Chat API service for communicating with local Ollama backend
@@ -8,6 +9,7 @@ export interface ChatRequest {
   message: string;
   epsLogContent?: string;
   testCaseContent?: string;
+  messages: ChatMessage[]; // Add chat history
 }
 
 export interface ChatResponse {
@@ -19,11 +21,12 @@ export interface ChatResponse {
  * Send a message to the local Ollama API for chat or EPS validation
  * Supports raw EPS log and test case content for direct validation
  */
-export async function sendChatMessage({ message, epsLogContent, testCaseContent }: ChatRequest): Promise<ChatResponse> {
+export async function sendChatMessage({ message, epsLogContent, testCaseContent, messages: chatHistory }: ChatRequest): Promise<ChatResponse> {
   console.log('ChatAPI: Sending message to backend', { 
     messageLength: message.length,
     logLength: epsLogContent?.length || 0,
     testCaseLength: testCaseContent?.length || 0,
+    chatHistoryLength: chatHistory.length,
     epsLogPreview: epsLogContent?.substring(0, 100) + (epsLogContent && epsLogContent.length > 100 ? '...' : ''),
     testCasePreview: testCaseContent?.substring(0, 100) + (testCaseContent && testCaseContent.length > 100 ? '...' : '')
   });
@@ -38,14 +41,23 @@ export async function sendChatMessage({ message, epsLogContent, testCaseContent 
       prompt = buildEpsValidationPrompt(truncatedLog, truncatedTestCase);
     }
 
+    // Build conversation history for the API
+    const apiMessages = [
+      ...chatHistory.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      })),
+      { role: "user", content: prompt }
+    ];
+
     const response = await fetch('http://localhost:11434/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: "phi3:mini", // switched from gemma3:1b to phi3:mini
-        messages: [{ role: "user", content: prompt }],
+        model: "phi3:mini",
+        messages: apiMessages,
         stream: false // Set to true for streaming if desired
       }),
     });
