@@ -44,7 +44,7 @@ export async function sendChatMessage({ message, epsLogContent, testCaseContent 
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: "gemma3:1b",
+        model: "phi3:mini", // switched from gemma3:1b to phi3:mini
         messages: [{ role: "user", content: prompt }],
         stream: false // Set to true for streaming if desired
       }),
