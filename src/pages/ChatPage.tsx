@@ -51,7 +51,13 @@ export const ChatPage: React.FC = () => {
 
   // API call to chat backend
   const callChatAPI = async (message: string, epsLogContent?: string, testCaseContent?: string): Promise<ChatReply> => {
-    console.log('ChatPage: Making API call', { message, hasEpsLog: !!epsLogContent, hasTestCase: !!testCaseContent });
+    console.log('ChatPage: Making API call', { 
+      message, 
+      hasEpsLog: !!epsLogContent, 
+      hasTestCase: !!testCaseContent,
+      epsLogPreview: epsLogContent?.substring(0, 100) + (epsLogContent && epsLogContent.length > 100 ? '...' : ''),
+      testCasePreview: testCaseContent?.substring(0, 100) + (testCaseContent && testCaseContent.length > 100 ? '...' : '')
+    });
     
     try {
       let prompt = message;
@@ -80,7 +86,10 @@ export const ChatPage: React.FC = () => {
       const data = await response.json();
       const reply = data?.message?.content || data?.content || "No reply from model";
       
-      console.log('ChatPage: API reply received', { replyContentLength: reply.length });
+      console.log('ChatPage: API reply received', { 
+        replyContentLength: reply.length,
+        replyPreview: reply.substring(0, 100) + (reply.length > 100 ? '...' : '')
+      });
       return {
         chatResponse: reply,
         stateUpdate: appState

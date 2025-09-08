@@ -14,7 +14,11 @@ export async function readFileAsText(file: File): Promise<string> {
     const reader = new FileReader();
     reader.onload = (e) => {
       const content = e.target?.result as string;
-      console.log('epsUtils: File content read', { fileName: file.name, contentLength: content.length });
+      console.log('epsUtils: File content read', { 
+        fileName: file.name, 
+        contentLength: content.length,
+        contentPreview: content.substring(0, 100) + (content.length > 100 ? '...' : '')
+      });
       resolve(content);
     };
     reader.onerror = () => {
@@ -32,11 +36,18 @@ export async function readFileAsText(file: File): Promise<string> {
  * @returns The formatted prompt string for the Ollama API.
  */
 export function buildEpsValidationPrompt(epsLogContent: string, testCaseContent: string): string {
-  const prompt = `System: You are an EPS log validator. Parse and analyze the following raw EPS log content: [${epsLogContent}]. Validate it against this test case: [${testCaseContent}]. Output in this format: Overall Result: PASS or FAIL. Reasoning and Evidence: [step-by-step analysis with log excerpts]. If the log or test case is malformed, note the issue but attempt validation.\nUser: Validate the test case against the EPS log now.`;
+  const prompt = `System: You are an EPS log validator. Parse and analyze the raw EPS log content: [${epsLogContent}]. Validate it against this test case: [${testCaseContent}]. For each test case step, verify the action in the log and cite specific log entries (e.g., timestamps, request IDs, service responses) as evidence. Output in this format: 
+Overall Result: PASS or FAIL
+Reasoning and Evidence:
+- Step 1: [Action and verification details with specific log excerpts]
+- Step 2: [Details]
+...
+If the log or test case is malformed, note the issue but attempt validation. If no relevant log entries are found, indicate this explicitly.\nUser: Validate the test case against the EPS log now.`;
   console.log('epsUtils: Built EPS validation prompt', {
     logLength: epsLogContent.length,
     testCaseLength: testCaseContent.length,
-    promptLength: prompt.length
+    promptLength: prompt.length,
+    promptPreview: prompt.substring(0, 200) + (prompt.length > 200 ? '...' : '')
   });
   return prompt;
 }
@@ -44,10 +55,10 @@ export function buildEpsValidationPrompt(epsLogContent: string, testCaseContent:
 /**
  * Truncates content to avoid exceeding Ollama token limits.
  * @param content - The content to truncate (e.g., EPS log or test case).
- * @param maxLength - Maximum allowed length (default: 10000 characters).
+ * @param maxLength - Maximum allowed length (default: 50000 characters).
  * @returns Truncated content with a warning if truncated.
  */
-export function truncateContent(content: string, maxLength: number = 10000): string {
+export function truncateContent(content: string, maxLength: number = 50000): string {
   if (content.length <= maxLength) {
     return content;
   }
@@ -55,7 +66,8 @@ export function truncateContent(content: string, maxLength: number = 10000): str
   console.warn('epsUtils: Content truncated', {
     originalLength: content.length,
     maxLength,
-    truncatedLength: truncated.length
+    truncatedLength: truncated.length,
+    truncatedPreview: truncated.substring(0, 100) + (truncated.length > 100 ? '...' : '')
   });
   return truncated;
 }

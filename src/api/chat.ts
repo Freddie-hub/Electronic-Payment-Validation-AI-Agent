@@ -23,7 +23,9 @@ export async function sendChatMessage({ message, epsLogContent, testCaseContent 
   console.log('ChatAPI: Sending message to backend', { 
     messageLength: message.length,
     logLength: epsLogContent?.length || 0,
-    testCaseLength: testCaseContent?.length || 0
+    testCaseLength: testCaseContent?.length || 0,
+    epsLogPreview: epsLogContent?.substring(0, 100) + (epsLogContent && epsLogContent.length > 100 ? '...' : ''),
+    testCasePreview: testCaseContent?.substring(0, 100) + (testCaseContent && testCaseContent.length > 100 ? '...' : '')
   });
 
   try {
@@ -58,6 +60,7 @@ export async function sendChatMessage({ message, epsLogContent, testCaseContent 
     const reply = data?.message?.content || data?.content || "No reply from model";
     console.log('ChatAPI: Response received', { 
       replyLength: reply.length,
+      replyPreview: reply.substring(0, 100) + (reply.length > 100 ? '...' : ''),
       hasError: !!data.error 
     });
 
