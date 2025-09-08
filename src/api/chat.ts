@@ -1,10 +1,13 @@
+import { buildEpsValidationPrompt, truncateContent } from '@/lib/epsUtils';
+
 /**
  * Chat API service for communicating with local Ollama backend
- * Handles message processing and response formatting
+ * Handles message processing and EPS log validation
  */
-
 export interface ChatRequest {
   message: string;
+  epsLogContent?: string;
+  testCaseContent?: string;
 }
 
 export interface ChatResponse {
@@ -13,19 +16,36 @@ export interface ChatResponse {
 }
 
 /**
- * Send a message to the local Ollama API
- * This function will be used by the frontend to communicate with the backend
+ * Send a message to the local Ollama API for chat or EPS validation
+ * Supports raw EPS log and test case content for direct validation
  */
-export async function sendChatMessage(message: string): Promise<ChatResponse> {
-  console.log('ChatAPI: Sending message to backend', { messageLength: message.length });
-  
+export async function sendChatMessage({ message, epsLogContent, testCaseContent }: ChatRequest): Promise<ChatResponse> {
+  console.log('ChatAPI: Sending message to backend', { 
+    messageLength: message.length,
+    logLength: epsLogContent?.length || 0,
+    testCaseLength: testCaseContent?.length || 0
+  });
+
   try {
-    const response = await fetch('/api/chat', {
+    let prompt = message;
+    if (epsLogContent && testCaseContent) {
+      // Truncate inputs to avoid Ollama token limit issues
+      const truncatedLog = truncateContent(epsLogContent);
+      const truncatedTestCase = truncateContent(testCaseContent);
+      // Use utility for prompt construction
+      prompt = buildEpsValidationPrompt(truncatedLog, truncatedTestCase);
+    }
+
+    const response = await fetch('http://localhost:11434/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({
+        model: "gemma3:1b",
+        messages: [{ role: "user", content: prompt }],
+        stream: false // Set to true for streaming if desired
+      }),
     });
 
     if (!response.ok) {
@@ -34,17 +54,18 @@ export async function sendChatMessage(message: string): Promise<ChatResponse> {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const data: ChatResponse = await response.json();
+    const data = await response.json();
+    const reply = data?.message?.content || data?.content || "No reply from model";
     console.log('ChatAPI: Response received', { 
-      replyLength: data.reply?.length || 0,
+      replyLength: reply.length,
       hasError: !!data.error 
     });
 
-    return data;
+    return { reply };
   } catch (error) {
     console.error('ChatAPI: Request failed', error);
     return {
-      reply: 'Sorry, I cannot connect to the local AI service. Please ensure the backend is running on localhost:11434.',
+      reply: 'Sorry, I cannot connect to the local AI service. Please ensure Ollama is running on localhost:11434 and the model is loaded.',
       error: error instanceof Error ? error.message : 'Unknown error'
     };
   }

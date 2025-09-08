@@ -9,16 +9,18 @@ interface ChatInterfaceProps {
   messages: ChatMessage[];
   onSendMessage: (message: string) => void;
   isLoading: boolean;
+  onTestCaseDetected?: () => void; // Callback to trigger file upload modal
 }
 
 /**
  * Main chat interface component for user-agent communication
- * Handles message display, input, and real-time chat functionality
+ * Handles message display, input, test case detection, and real-time chat functionality
  */
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   messages,
   onSendMessage,
-  isLoading
+  isLoading,
+  onTestCaseDetected
 }) => {
   const [inputMessage, setInputMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -38,6 +40,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         messageEmpty: !inputMessage.trim(), 
         isLoading 
       });
+      return;
+    }
+
+    // Detect test case content (JSON or XML-like)
+    const isTestCase = /{TestCaseID|StepNo\b|<StepNo/i.test(inputMessage);
+    if (isTestCase && onTestCaseDetected) {
+      console.log('ChatInterface: Test case detected in input', { inputMessage });
+      onSendMessage(inputMessage.trim());
+      onTestCaseDetected();
+      setInputMessage('');
       return;
     }
 
@@ -62,7 +74,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           {messages.length === 0 ? (
             <div className="text-center text-muted-foreground py-8">
               <p className="text-lg mb-2">Welcome to EPS Agent</p>
-              <p>Start a conversation or upload a file to begin task processing.</p>
+              <p>Start a conversation, paste a test case, or upload an EPS log file to begin validation.</p>
             </div>
           ) : (
             messages.map((message) => (
@@ -77,7 +89,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       : 'bg-secondary text-secondary-foreground mr-4'
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">{message.content}</p>
+                  {/* Format test case content in user messages */}
+                  {message.role === 'user' && /{TestCaseID|StepNo\b|<StepNo/i.test(message.content) ? (
+                    <pre className="text-sm whitespace-pre-wrap bg-muted/50 p-2 rounded">
+                      {message.content}
+                    </pre>
+                  ) : (
+                    <p className="whitespace-pre-wrap">{message.content}</p>
+                  )}
                   <p className="text-xs opacity-70 mt-1">
                     {message.timestamp.toLocaleTimeString()}
                   </p>
@@ -92,7 +111,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <div className="bg-secondary text-secondary-foreground rounded-lg px-4 py-2 mr-4">
                 <div className="flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>EPS Agent is thinking...</span>
+                  <span>EPS Agent is validating...</span>
                 </div>
               </div>
             </div>
@@ -113,7 +132,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 console.log('ChatInterface: Input updated', { length: e.target.value.length });
               }}
               onKeyDown={handleKeyDown}
-              placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
+              placeholder="Type your message or paste a test case... (Press Enter to send, Shift+Enter for new line)"
               className="resize-none min-h-[44px] max-h-32"
               disabled={isLoading}
             />

@@ -13,6 +13,7 @@ import {
   EpsConfirmationData, 
   ApiResponse 
 } from '@/types/chat';
+import { buildEpsValidationPrompt, truncateContent } from '@/lib/epsUtils';
 
 /**
  * Main chat page component that orchestrates the entire EPS Agent interface
@@ -49,44 +50,25 @@ export const ChatPage: React.FC = () => {
   }, []);
 
   // API call to chat backend
-  const callChatAPI = async (message: string): Promise<ChatReply> => {
-    console.log('ChatPage: Making API call', { message });
+  const callChatAPI = async (message: string, epsLogContent?: string, testCaseContent?: string): Promise<ChatReply> => {
+    console.log('ChatPage: Making API call', { message, hasEpsLog: !!epsLogContent, hasTestCase: !!testCaseContent });
     
     try {
-      // // Since this is a Vite app, we'll need to proxy to the actual backend
-      // // For now, we'll simulate the API response for demonstration
-      
-      // // Simulated delay
-      // await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
-      
-      // // Simulated response based on message content
-      // let simulatedResponse = '';
-      
-      // if (message.toLowerCase().includes('file') || message.toLowerCase().includes('upload')) {
-      //   simulatedResponse = 'I can help you process files! Please use the "Start a New Task" option in the sidebar to upload a PDF or CSV file for processing.';
-      // } else if (message.toLowerCase().includes('task')) {
-      //   simulatedResponse = 'I\'m ready to help with task processing! Upload a file and I\'ll generate specific tasks based on its content and your requirements.';
-      // } else if (message.toLowerCase().includes('privacy')) {
-      //   simulatedResponse = 'All processing happens locally on your machine. Your files and conversations never leave your device, ensuring complete privacy and data security.';
-      // } else {
-      //   simulatedResponse = `I understand you said: "${message}". I'm EPS Agent, your local AI assistant for document processing and task automation. How can I help you today?`;
-      // }
+      let prompt = message;
+      if (epsLogContent && testCaseContent) {
+        // Truncate inputs to avoid token limits
+        const truncatedLog = truncateContent(epsLogContent);
+        const truncatedTestCase = truncateContent(testCaseContent);
+        // Construct EPS validation prompt
+        prompt = buildEpsValidationPrompt(truncatedLog, truncatedTestCase);
+      }
 
-      // console.log('ChatPage: Simulated API response generated');
-
-      // return {
-      //   chatResponse: simulatedResponse,
-      //   stateUpdate: appState
-      // };
-      
-      
-      // Actual API call code (uncomment when backend is ready):
       const response = await fetch('http://localhost:11434/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: "gemma3:1b",
-          messages: [{ role: "user", content: message }],
+          messages: [{ role: "user", content: prompt }],
           stream: false,
         }),
       });
@@ -98,6 +80,7 @@ export const ChatPage: React.FC = () => {
       const data = await response.json();
       const reply = data?.message?.content || data?.content || "No reply from model";
       
+      console.log('ChatPage: API reply received', { replyContentLength: reply.length });
       return {
         chatResponse: reply,
         stateUpdate: appState
@@ -117,41 +100,38 @@ export const ChatPage: React.FC = () => {
       currentState: appState 
     });
 
+    // Check for test case in message (e.g., JSON or XML-like content)
+    const isTestCase = /{TestCaseID|StepNo\b|<StepNo/i.test(messageContent);
+    if (isTestCase) {
+      console.log('ChatPage: Test case detected in chat', { messageContent });
+      addMessage('user', messageContent);
+      addMessage('assistant', 'Test case detected. Please upload the corresponding EPS log file to proceed with validation.');
+      setShowConfirmation(true);
+      return;
+    }
+
     // Add user message
     addMessage('user', messageContent);
     setIsLoading(true);
 
     try {
-      // Call API
       const reply = await callChatAPI(messageContent);
-      // response takes time to come back
-      // there is need to wait for it
-
-      console.log('ChatPage: API reply received', { 
-        replyContentLength: reply.chatResponse.length, 
-        stateUpdate: reply.stateUpdate 
-      });
-      // Add assistant response
       addMessage('assistant', reply.chatResponse);
 
-      // Process state updates if any
       if (reply.stateUpdate && reply.stateUpdate !== appState) {
         console.log('ChatPage: State update received', { 
           from: appState, 
           to: reply.stateUpdate 
         });
-        // Handle state transitions based on backend response
       }
 
       toast({
         title: "Message sent",
         description: "EPS Agent has responded to your message.",
       });
-      
     } catch (error) {
       console.error('ChatPage: Message handling failed', error);
       addMessage('assistant', 'Sorry, I encountered an error processing your message. Please try again.');
-      
       toast({
         title: "Error",
         description: "Failed to send message. Please check your connection.",
@@ -163,76 +143,95 @@ export const ChatPage: React.FC = () => {
   }, [isLoading, appState, addMessage, toast]);
 
   // Handle file confirmation
-  const handleFileConfirmation = useCallback((data: EpsConfirmationData) => {
-    console.log('ChatPage: File confirmation received', data);
+  const handleFileConfirmation = useCallback(async (data: EpsConfirmationData) => {
+    console.log('ChatPage: File confirmation received', {
+      fileName: data.pathToFile,
+      logLength: data.epsLogContent.length,
+      testCaseLength: data.testCaseContent.length
+    });
     
-    setCurrentFile(data.pathToPdfCsvFile);
+    setCurrentFile(data.pathToFile);
     setShowConfirmation(false);
     setAppState(AppState.TASK_MODE);
 
-    // Generate tasks based on the confirmation data
-    const generatedTasks: Task[] = data.tasksToBeDone.map((taskDescription, index) => ({
+    // Create a single validation task
+    const validationTask: Task = {
       id: generateId(),
-      description: taskDescription,
-      completed: false
-    }));
+      description: 'Validate test case against EPS log',
+      completed: false,
+      epsLogContent: data.epsLogContent,
+      testCaseContent: data.testCaseContent
+    };
 
-    setTasks(generatedTasks);
+    setTasks([validationTask]);
     setCompletedTasksCount(0);
 
     // Add confirmation message to chat
-    addMessage('assistant', `File "${data.pathToPdfCsvFile}" received. I've generated ${generatedTasks.length} tasks for processing. I'll now begin working on these tasks.`);
+    addMessage('assistant', `EPS log "${data.pathToFile}" and test case received. Initiating validation...`);
 
-    // Simulate task processing (in real app, this would be handled by the backend)
-    simulateTaskProcessing(generatedTasks);
+    // Process validation via API
+    await processEpsValidation(validationTask);
 
     toast({
-      title: "File processing started",
-      description: `Processing ${generatedTasks.length} tasks for ${data.pathToPdfCsvFile}`,
+      title: "Validation started",
+      description: `Validating test case for ${data.pathToFile}`,
     });
   }, [addMessage, toast]);
 
-  // Simulate task processing (replace with real backend integration)
-  const simulateTaskProcessing = useCallback((taskList: Task[]) => {
-    console.log('ChatPage: Starting simulated task processing', { taskCount: taskList.length });
-    
-    taskList.forEach((task, index) => {
-      setTimeout(() => {
-        setTasks(prevTasks => 
-          prevTasks.map(t => 
-            t.id === task.id 
-              ? { 
-                  ...t, 
-                  completed: true, 
-                  justification: `Task "${task.description}" completed successfully. All requirements have been met and data has been processed according to specifications.`,
-                  completedAt: new Date()
-                }
-              : t
-          )
-        );
+  // Process EPS validation via API
+  const processEpsValidation = useCallback(async (task: Task) => {
+    console.log('ChatPage: Starting EPS validation', { taskId: task.id });
+    setIsLoading(true);
 
-        setCompletedTasksCount(prev => {
-          const newCount = prev + 1;
-          console.log('ChatPage: Task completed', { 
-            taskId: task.id, 
-            completedCount: newCount,
-            totalTasks: taskList.length 
-          });
+    try {
+      const reply = await callChatAPI('', task.epsLogContent, task.testCaseContent);
+      setTasks(prevTasks =>
+        prevTasks.map(t =>
+          t.id === task.id
+            ? {
+                ...t,
+                completed: true,
+                justification: reply.chatResponse,
+                completedAt: new Date()
+              }
+            : t
+        )
+      );
+      setCompletedTasksCount(1);
+      setAppState(AppState.TASKS_COMPLETED);
+      setCompletionTimestamp(new Date());
 
-          // Check if all tasks are completed
-          if (newCount === taskList.length) {
-            console.log('ChatPage: All tasks completed, transitioning to completion state');
-            setTimeout(() => {
-              setAppState(AppState.TASKS_COMPLETED);
-              setCompletionTimestamp(new Date());
-            }, 1000);
-          }
-
-          return newCount;
-        });
-      }, (index + 1) * 2000); // Simulate 2-second intervals
-    });
-  }, []);
+      addMessage('assistant', reply.chatResponse);
+      toast({
+        title: "Validation complete",
+        description: "EPS log validation results are available.",
+      });
+    } catch (error) {
+      console.error('ChatPage: Validation failed', error);
+      setTasks(prevTasks =>
+        prevTasks.map(t =>
+          t.id === task.id
+            ? {
+                ...t,
+                completed: true,
+                justification: `Validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                completedAt: new Date()
+              }
+            : t
+        )
+      );
+      setCompletedTasksCount(1);
+      setAppState(AppState.TASKS_COMPLETED);
+      addMessage('assistant', 'Sorry, validation failed. Please check the log file and test case format.');
+      toast({
+        title: "Validation Error",
+        description: "Failed to validate EPS log. Please check your inputs.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [addMessage, toast]);
 
   // Handle sidebar navigation
   const handleSidebarNavigation = useCallback((action: string) => {
@@ -243,7 +242,6 @@ export const ChatPage: React.FC = () => {
         setShowConfirmation(true);
         break;
       case 'history':
-        // Show message history (could open a modal or filter view)
         toast({
           title: "Message History",
           description: `You have ${messages.length} messages in your current session.`,
@@ -270,11 +268,11 @@ export const ChatPage: React.FC = () => {
     setCurrentFile('');
     setCompletionTimestamp(new Date());
     
-    addMessage('assistant', 'Ready to start a new task! You can upload a new file or continue chatting.');
+    addMessage('assistant', 'Ready to start a new validation task! Please upload an EPS log file and paste your test case.');
     
     toast({
       title: "New Task Ready",
-      description: "You can now upload a new file for processing.",
+      description: "You can now upload a new EPS log file for validation.",
     });
   }, [addMessage, toast]);
 
@@ -296,6 +294,10 @@ export const ChatPage: React.FC = () => {
             messages={messages}
             onSendMessage={handleSendMessage}
             isLoading={isLoading}
+            onTestCaseDetected={() => {
+              console.log('ChatPage: Triggering file upload modal for test case');
+              setShowConfirmation(true);
+            }}
           />
         </div>
 
@@ -307,6 +309,7 @@ export const ChatPage: React.FC = () => {
                 tasks={tasks}
                 fileName={currentFile}
                 completedCount={completedTasksCount}
+                isLoading={isLoading}
               />
             )}
             

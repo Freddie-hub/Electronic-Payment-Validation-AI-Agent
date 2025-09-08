@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { EpsConfirmationData } from '@/types/chat';
+import { readFileAsText } from '@/lib/epsUtils';
 
 interface EpsConfirmationProps {
   onConfirm: (data: EpsConfirmationData) => void;
@@ -13,41 +14,47 @@ interface EpsConfirmationProps {
 }
 
 /**
- * File submission and task confirmation component
- * Allows users to upload files and specify tasks to be performed
+ * File submission and test case confirmation component
+ * Allows users to upload EPS log files and specify a test case for validation
  */
 export const EpsConfirmation: React.FC<EpsConfirmationProps> = ({
   onConfirm,
   onCancel
 }) => {
   const [formData, setFormData] = useState({
-    pathToPdfCsvFile: '',
-    tasksList: '',
+    pathToFile: '',
+    epsLogContent: '',
+    testCaseContent: '',
     timestamp: new Date()
   });
   
   const [isValidating, setIsValidating] = useState(false);
 
-  // Handle file selection
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle file selection and read content as text
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const filePath = file.name; // In real app, this would be the actual path
       console.log('EpsConfirmation: File selected', { fileName: file.name, fileSize: file.size });
-      
-      setFormData(prev => ({
-        ...prev,
-        pathToPdfCsvFile: filePath
-      }));
+      try {
+        const content = await readFileAsText(file); // Use utility function
+        setFormData(prev => ({
+          ...prev,
+          pathToFile: file.name,
+          epsLogContent: content
+        }));
+      } catch (error) {
+        console.error('EpsConfirmation: Failed to read file', { fileName: file.name, error });
+        alert(error instanceof Error ? error.message : 'Failed to read the file.');
+      }
     }
   };
 
-  // Handle tasks input change
-  const handleTasksChange = (value: string) => {
-    console.log('EpsConfirmation: Tasks updated', { tasksLength: value.length });
+  // Handle test case input change
+  const handleTestCaseChange = (value: string) => {
+    console.log('EpsConfirmation: Test case updated', { testCaseLength: value.length });
     setFormData(prev => ({
       ...prev,
-      tasksList: value
+      testCaseContent: value
     }));
   };
 
@@ -57,37 +64,31 @@ export const EpsConfirmation: React.FC<EpsConfirmationProps> = ({
     console.log('EpsConfirmation: Validating form submission', formData);
 
     // Validate required fields
-    if (!formData.pathToPdfCsvFile.trim()) {
-      alert('Please select a file to process');
+    if (!formData.pathToFile.trim() || !formData.epsLogContent.trim()) {
+      alert('Please select a valid EPS log file to process');
       setIsValidating(false);
       return;
     }
 
-    if (!formData.tasksList.trim()) {
-      alert('Please specify at least one task to be performed');
-      setIsValidating(false);
-      return;
-    }
-
-    // Parse tasks from textarea (split by lines, filter empty)
-    const tasks = formData.tasksList
-      .split('\n')
-      .map(task => task.trim())
-      .filter(task => task.length > 0);
-
-    if (tasks.length === 0) {
-      alert('Please specify valid tasks');
+    if (!formData.testCaseContent.trim()) {
+      alert('Please paste a valid test case to validate against');
       setIsValidating(false);
       return;
     }
 
     const confirmationData: EpsConfirmationData = {
-      pathToPdfCsvFile: formData.pathToPdfCsvFile,
-      tasksToBeDone: tasks,
+      pathToFile: formData.pathToFile,
+      epsLogContent: formData.epsLogContent,
+      testCaseContent: formData.testCaseContent,
+      tasksToBeDone: ['Validate test case against EPS log'],
       timestamp: formData.timestamp
     };
 
-    console.log('EpsConfirmation: Submitting confirmation data', confirmationData);
+    console.log('EpsConfirmation: Submitting confirmation data', {
+      fileName: confirmationData.pathToFile,
+      logLength: confirmationData.epsLogContent.length,
+      testCaseLength: confirmationData.testCaseContent.length
+    });
     onConfirm(confirmationData);
     setIsValidating(false);
   };
@@ -97,7 +98,7 @@ export const EpsConfirmation: React.FC<EpsConfirmationProps> = ({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <FileText className="w-5 h-5 text-primary" />
-          File Processing Confirmation
+          EPS Log Validation
         </CardTitle>
       </CardHeader>
       
@@ -105,46 +106,46 @@ export const EpsConfirmation: React.FC<EpsConfirmationProps> = ({
         {/* File Upload Section */}
         <div className="space-y-2">
           <Label htmlFor="file-upload" className="text-sm font-medium">
-            Select File (PDF/CSV)
+            Upload EPS Log File
           </Label>
           <div className="flex items-center gap-2">
             <Input
               id="file-upload"
               type="file"
-              accept=".pdf,.csv"
+              accept=".log,.xml,.txt,.json,.pdf"
               onChange={handleFileChange}
               className="flex-1"
             />
             <Upload className="w-4 h-4 text-muted-foreground" />
           </div>
-          {formData.pathToPdfCsvFile && (
+          {formData.pathToFile && (
             <div className="flex items-center gap-2 text-sm text-success">
               <CheckCircle className="w-4 h-4" />
-              <span>File selected: {formData.pathToPdfCsvFile}</span>
+              <span>File selected: {formData.pathToFile}</span>
             </div>
           )}
         </div>
 
-        {/* Tasks Input Section */}
+        {/* Test Case Input Section */}
         <div className="space-y-2">
-          <Label htmlFor="tasks-input" className="text-sm font-medium">
-            Tasks to be Performed
+          <Label htmlFor="test-case-input" className="text-sm font-medium">
+            Paste Test Case
           </Label>
           <Textarea
-            id="tasks-input"
-            value={formData.tasksList}
-            onChange={(e) => handleTasksChange(e.target.value)}
-            placeholder="Enter tasks (one per line):&#10;- Extract data from tables&#10;- Generate summary report&#10;- Validate data accuracy"
+            id="test-case-input"
+            value={formData.testCaseContent}
+            onChange={(e) => handleTestCaseChange(e.target.value)}
+            placeholder="Paste your test case here (e.g., JSON or plain text describing test steps)"
             className="min-h-32 resize-none"
           />
           <p className="text-xs text-muted-foreground">
-            Enter each task on a new line. These will be processed by the EPS Agent.
+            Enter the test case to validate against the EPS log. Ensure it includes all necessary steps.
           </p>
         </div>
 
         {/* Timestamp Display */}
         <div className="space-y-2">
-          <Label className="text-sm font-medium">Processing Timestamp</Label>
+          <Label className="text-sm font-medium">Submission Timestamp</Label>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Calendar className="w-4 h-4" />
             <span>{formData.timestamp.toLocaleString()}</span>
@@ -155,10 +156,10 @@ export const EpsConfirmation: React.FC<EpsConfirmationProps> = ({
         <div className="flex gap-2 pt-4">
           <Button
             onClick={handleSubmit}
-            disabled={isValidating || !formData.pathToPdfCsvFile || !formData.tasksList.trim()}
+            disabled={isValidating || !formData.pathToFile || !formData.epsLogContent.trim() || !formData.testCaseContent.trim()}
             className="flex-1"
           >
-            {isValidating ? 'Processing...' : 'Start Processing'}
+            {isValidating ? 'Processing...' : 'Start Validation'}
           </Button>
           <Button 
             variant="outline" 

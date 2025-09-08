@@ -5,8 +5,10 @@
 
 // Interface for file confirmation component
 export interface EpsConfirmationData {
-  pathToPdfCsvFile: string;
-  tasksToBeDone: string[];
+  pathToFile: string;
+  epsLogContent: string;
+  testCaseContent: string;
+  tasksToBeDone?: string[]; // Optional, defaults to ['Validate test case against EPS log']
   timestamp: Date;
 }
 
@@ -24,13 +26,21 @@ export interface ChatMessage {
   timestamp: Date;
 }
 
-// Task interface with completion tracking
+// Task interface with completion tracking and EPS validation data
 export interface Task {
   id: string;
   description: string;
   completed: boolean;
   justification?: string;
   completedAt?: Date;
+  epsLogContent?: string;
+  testCaseContent?: string;
+}
+
+// Validation result interface for structured model output
+export interface ValidationResult {
+  overallResult: 'PASS' | 'FAIL';
+  reasoningAndEvidence: string;
 }
 
 // Application state enum

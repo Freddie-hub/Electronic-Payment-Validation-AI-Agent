@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, Clock, FileText } from 'lucide-react';
+import { CheckCircle2, Clock, FileText, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
@@ -9,16 +9,18 @@ interface ShowListOfTasksProps {
   tasks: Task[];
   fileName: string;
   completedCount: number;
+  isLoading?: boolean; // Added to show loading state
 }
 
 /**
- * Component to display list of tasks with their completion status
- * Shows progress and current status of file processing tasks
+ * Component to display the EPS validation task with progress status
+ * Shows loading state and test case snippet during validation
  */
 export const ShowListOfTasks: React.FC<ShowListOfTasksProps> = ({
   tasks,
   fileName,
-  completedCount
+  completedCount,
+  isLoading = false
 }) => {
   const totalTasks = tasks.length;
   const progressPercentage = totalTasks > 0 ? (completedCount / totalTasks) * 100 : 0;
@@ -28,9 +30,16 @@ export const ShowListOfTasks: React.FC<ShowListOfTasksProps> = ({
     console.log('ShowListOfTasks: Task status updated', {
       totalTasks,
       completedCount,
-      progressPercentage: Math.round(progressPercentage)
+      progressPercentage: Math.round(progressPercentage),
+      isLoading
     });
-  }, [completedCount, totalTasks, progressPercentage]);
+  }, [completedCount, totalTasks, progressPercentage, isLoading]);
+
+  // Truncate test case content for display
+  const truncateContent = (content: string | undefined, maxLength: number = 100) => {
+    if (!content) return 'N/A';
+    return content.length > maxLength ? `${content.slice(0, maxLength)}...` : content;
+  };
 
   return (
     <Card className="w-full">
@@ -38,7 +47,7 @@ export const ShowListOfTasks: React.FC<ShowListOfTasksProps> = ({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-primary" />
-            Task Processing
+            EPS Log Validation
           </CardTitle>
           <Badge variant={completedCount === totalTasks ? "default" : "secondary"}>
             {completedCount}/{totalTasks} Complete
@@ -52,9 +61,9 @@ export const ShowListOfTasks: React.FC<ShowListOfTasksProps> = ({
         
         {/* Progress bar */}
         <div className="space-y-2">
-          <Progress value={progressPercentage} className="w-full" />
+          <Progress value={isLoading ? undefined : progressPercentage} className="w-full" />
           <div className="text-xs text-muted-foreground text-center">
-            {Math.round(progressPercentage)}% Complete
+            {isLoading ? 'Validating...' : `${Math.round(progressPercentage)}% Complete`}
           </div>
         </div>
       </CardHeader>
@@ -65,7 +74,7 @@ export const ShowListOfTasks: React.FC<ShowListOfTasksProps> = ({
             <div className="text-center py-8 text-muted-foreground">
               <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <p>No tasks generated yet...</p>
-              <p className="text-sm">The EPS Agent is analyzing your file.</p>
+              <p className="text-sm">The EPS Agent is preparing to validate your file.</p>
             </div>
           ) : (
             tasks.map((task, index) => (
@@ -82,7 +91,11 @@ export const ShowListOfTasks: React.FC<ShowListOfTasksProps> = ({
                   {task.completed ? (
                     <CheckCircle2 className="w-5 h-5 text-success" />
                   ) : (
-                    <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30" />
+                    isLoading ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                    ) : (
+                      <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30" />
+                    )
                   )}
                 </div>
 
@@ -99,19 +112,29 @@ export const ShowListOfTasks: React.FC<ShowListOfTasksProps> = ({
                     )}
                   </div>
                   
-                  <p className={`text-sm ${
-                    task.completed ? 'line-through opacity-75' : ''
-                  }`}>
+                  <p className={`text-sm ${task.completed ? 'line-through opacity-75' : ''}`}>
                     {task.description}
                   </p>
                   
+                  {/* Show test case snippet */}
+                  {task.testCaseContent && (
+                    <div className="mt-2 p-2 bg-muted/20 rounded border-l-2 border-primary">
+                      <p className="text-xs text-primary-foreground font-medium">
+                        Test Case Snippet:
+                      </p>
+                      <p className="text-xs text-foreground/80 whitespace-pre-wrap">
+                        {truncateContent(task.testCaseContent)}
+                      </p>
+                    </div>
+                  )}
+
                   {/* Show justification if task is completed */}
                   {task.completed && task.justification && (
                     <div className="mt-2 p-2 bg-success/10 rounded border-l-2 border-success">
                       <p className="text-xs text-success-foreground font-medium">
-                        Completion Note:
+                        Result:
                       </p>
-                      <p className="text-xs text-success-foreground/80">
+                      <p className="text-xs text-success-foreground/80 whitespace-pre-wrap">
                         {task.justification}
                       </p>
                     </div>
@@ -127,14 +150,14 @@ export const ShowListOfTasks: React.FC<ShowListOfTasksProps> = ({
           <div className="mt-6 pt-4 border-t">
             <div className="flex justify-between items-center text-sm">
               <span className="text-muted-foreground">
-                Processing Status
+                Validation Status
               </span>
               <span className={`font-medium ${
                 completedCount === totalTasks ? 'text-success' : 'text-warning'
               }`}>
                 {completedCount === totalTasks 
-                  ? 'All tasks completed!' 
-                  : `${totalTasks - completedCount} tasks remaining`
+                  ? 'Validation completed!' 
+                  : 'Validation in progress...'
                 }
               </span>
             </div>
